@@ -24,4 +24,6 @@ goto :end
 
 :fail
 echo.
-echo 执行失败!请确认 MySQL 在运行、mysql 命令在 PATH 中,把上面的报错发给
+echo 执行失败!请确认 MySQL 在运行、mysql 命令在 PATH 中,把上面的报错发给 Claude
+:end
+pause

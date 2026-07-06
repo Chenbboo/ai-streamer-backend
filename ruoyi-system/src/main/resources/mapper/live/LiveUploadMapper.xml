@@ -90,4 +90,58 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <foreach collection="array" item="id" open="(" separator="," close=")">#{id}</foreach>
     </delete>
 
-</mapper>
+    <update id="updateAiResult">
+        update live_upload
+        set ai_status = #{aiStatus},
+            ai_result = #{aiResult},
+            update_time = sysdate()
+        where upload_id = #{uploadId}
+    </update>
+
+    <insert id="insertCustomerIfAbsent">
+        insert into live_customer (nickname, badge, first_seen_date, last_seen_date, create_by, create_time)
+        values (#{nickname}, #{badge}, #{upload.bizDate}, #{upload.bizDate}, #{upload.updateBy}, sysdate())
+        on duplicate key update
+            badge = if(badge = '', values(badge), badge),
+            last_seen_date = values(last_seen_date),
+            update_by = #{upload.updateBy},
+            update_time = sysdate()
+    </insert>
+
+    <select id="selectCustomerIdByNickname" resultType="Long">
+        select customer_id
+        from live_customer
+        where nickname = #{nickname}
+        limit 1
+    </select>
+
+    <insert id="upsertGiftRecord">
+        insert into live_gift_record (biz_date, streamer_id, customer_id, xu, rank_no, upload_id,
+                                      confirm_status, ai_confidence, create_time, update_by, update_time)
+        values (#{upload.bizDate}, #{upload.streamerId}, #{customerId}, #{xu}, #{rankNo}, #{upload.uploadId},
+                '1', '1', sysdate(), #{upload.updateBy}, sysdate())
+        on duplicate key update
+            xu = values(xu),
+            rank_no = values(rank_no),
+            upload_id = values(upload_id),
+            confirm_status = '1',
+            update_by = #{upload.updateBy},
+            update_time = sysdate()
+    </insert>
+
+    <insert id="upsertChatContact">
+        insert into live_chat_contact (biz_date, streamer_id, customer_id, upload_id, create_time)
+        values (#{upload.bizDate}, #{upload.streamerId}, #{customerId}, #{upload.uploadId}, sysdate())
+        on duplicate key update
+            upload_id = values(upload_id)
+    </insert>
+
+    <insert id="upsertDailyReport">
+        insert into live_daily_report (biz_date, streamer_id, total_xu, raw_text, upload_id, create_time, update_by, update_time)
+        values (#{upload.bizDate}, #{upload.streamerId}, #{totalXu}, #{rawText}, #{upload.uploadId}, sysdate(), #{upload.updateBy}, sysdate())
+        on duplicate key update
+            total_xu = values(total_xu),
+            raw_text = values(raw_text),
+            upload_id = values(upload_id),
+            update_by = #{upload.updateBy},
+       

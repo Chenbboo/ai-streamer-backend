@@ -21,4 +21,18 @@ public interface ILiveUploadService
      * 删除上传记录,同时删除磁盘文件
      */
     public int deleteLiveUploadByIds(Long[] uploadIds);
+
+    /**
+     * 生成模拟 AI 识别结果
+     */
+    public int mockRecognize(Long uploadId);
+
+    public int recognizeUpload(Long uploadId);
+
+    public int saveRecognizeResult(Long uploadId, String aiResult);
+
+    /**
+     * 确认模拟识别结果入库
+     */
+    public int confirmRecognize(Long uploadId);
 }

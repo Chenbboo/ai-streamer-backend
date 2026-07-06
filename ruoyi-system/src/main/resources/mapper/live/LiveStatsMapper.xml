@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.live.mapper.LiveStatsMapper">
+
+    <sql id="streamerFilter">
+        <if test="streamerId != null">
+            and s.streamer_id = #{streamerId}
+        </if>
+    </sql>
+
+    <select id="selectStreamerCards" resultType="map">
+        select s.streamer_id as streamerId,
+               s.stage_name as stageName,
+               coalesce(dr.totalXu, 0) as totalXu,
+               coalesce(dr.reportDays, 0) as reportDays,
+               coalesce(gr.giftXu, 0) as giftXu,
+               coalesce(gr.giftCustomers, 0) as giftCustomers,
+               coalesce(cc.chatCustomers, 0) as chatCustomers
+        from live_streamer s
+        left join (
+            select streamer_id, sum(total_xu) as totalXu, count(*) as reportDays
+            from live_daily_report
+            where biz_date between #{beginDate} and #{endDate}
+            group by streamer_id
+        ) dr on dr.streamer_id = s.streamer_id
+        left join (
+            select streamer_id, sum(xu) as giftXu, count(distinct customer_id) as giftCustomers
+            from live_gift_record
+            where biz_date between #{beginDate} and #{endDate}
+            group by streamer_id
+        ) gr on gr.streamer_id = s.streamer_id
+        left join (
+            select streamer_id, count(distinct customer_id) as chatCustomers
+            from live_chat_contact
+            where biz_date between #{beginDate} and #{endDate}
+            group by streamer_id
+        ) cc on cc.streamer_id = s.streamer_id
+        where s.status = '0'
+        <include refid="streamerFilter"/>
+        order by totalXu desc, s.streamer_id
+    </select>
+
+    <select id="selectPreviousTotals" resultType="map">
+        select s.streamer_id as streamerId,
+               coalesce(sum(r.total_xu), 0) as previousTotalXu
+        from live_streamer s
+        left join live_daily_report r
+               on r.streamer_id = s.streamer_id
+              and r.biz_date between #{beginDate} and #{endDate}
+        where s.status = '0'
+        <include refid="streamerFilter"/>
+        group by s.streamer_id
+    </select>
+
+    <select id="selectTrend" resultType="map">
+        select date_format(r.biz_date, '%Y-%m-%d') as bizDate,
+               r.streamer_id as streamerId,
+               s.stage_name as stageName,
+               sum(r.total_xu) as totalXu
+        from live_daily_report r
+        left join live_streamer s on s.streamer_id = r.streamer_id
+        where r.biz_date between #{beginDate} and #{endDate}
+        <if test="streamerId != null">
+            and r.streamer_id = #{streamerId}
+        </if>
+        group by r.biz_date, r.streamer_id, s.stage_name
+        order by r.biz_date, r.streamer_id
+    </select>
+
+    <select id="selectCustomerCards" resultType="map">
+        select s.streamer_id as streamerId,
+               s.stage_name as stageName,
+               coalesce(g.activeCustomers, 0) as activeCustomers,
+               coalesce(c.chatCustomers, 0) as chatCustomers,
+               coalesce(g.highValueCustomers, 0) as highValueCustomers,
+               case
+                   when coalesce(g.activeCustomers, 0) = 0 then 0
+                   else round(coalesce(c.chatCustomers, 0) * 100 / g.activeCustomers, 1)
+               end as contactRate
+        from live_streamer s
+        left join (
+            select streamer_id,
+                   count(distinct customer_id) as activeCustomers,
+                   count(distinct case when xu >= 1000 then customer_id end) as highValueCustomers
+            from live_gift_record
+            where biz_date between #{beginDate} and #{endDate}
+            group by streamer_id
+        ) g on g.streamer_id = s.streamer_id
+        left join (
+            select streamer_id, count(distinct customer_id) as chatCustomers
+            from live_chat_contact
+            where biz_date between #{beginDate} and #{endDate}
+            group by streamer_id
+        ) c on c.streamer_id = s.streamer_id
+        where s.status = '0'
+        <include refid="streamerFilter"/>
+        order by contactRate asc, s.streamer_id
+    </select>
+</mapper>
