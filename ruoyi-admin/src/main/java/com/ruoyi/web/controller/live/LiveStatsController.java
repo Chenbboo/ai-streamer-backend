@@ -91,7 +91,14 @@ public class LiveStatsController extends BaseController
         {
             date = LocalDate.now().minusDays(1).toString();
         }
-        return AjaxResult.success(statsService.getWeijiStats(date));
+        LiveStreamer own = getOwnStreamerIfRestricted();
+        Long streamerId = own == null ? null : own.getStreamerId();
+        List<Map<String, Object>> data = statsService.getWeijiStats(date);
+        if (streamerId != null)
+        {
+            data = data.stream().filter(d -> streamerId.equals(d.get("streamerId"))).collect(java.util.stream.Collectors.toList());
+        }
+        return AjaxResult.success(data);
     }
 
     @PreAuthorize("@ss.hasPermi('live:stats:list')")
@@ -100,7 +107,14 @@ public class LiveStatsController extends BaseController
     {
         LocalDate end = StringUtils.isEmpty(endDate) ? LocalDate.now().minusDays(1) : LocalDate.parse(endDate);
         LocalDate begin = StringUtils.isEmpty(beginDate) ? end.withDayOfMonth(1) : LocalDate.parse(beginDate);
-        return AjaxResult.success(statsService.getWeijiMonthStats(begin.toString(), end.toString()));
+        LiveStreamer own = getOwnStreamerIfRestricted();
+        Long streamerId = own == null ? null : own.getStreamerId();
+        List<Map<String, Object>> data = statsService.getWeijiMonthStats(begin.toString(), end.toString());
+        if (streamerId != null)
+        {
+            data = data.stream().filter(d -> streamerId.equals(d.get("streamerId"))).collect(java.util.stream.Collectors.toList());
+        }
+        return AjaxResult.success(data);
     }
 
     @PreAuthorize("@ss.hasPermi('live:stats:list')")
@@ -109,6 +123,8 @@ public class LiveStatsController extends BaseController
     {
         LocalDate end = StringUtils.isEmpty(endDate) ? LocalDate.now().minusDays(1) : LocalDate.parse(endDate);
         LocalDate begin = StringUtils.isEmpty(beginDate) ? end.withDayOfMonth(1) : LocalDate.parse(beginDate);
+        LiveStreamer own = getOwnStreamerIfRestricted();
+        if (own != null) streamerId = own.getStreamerId();
         return AjaxResult.success(statsService.getWeijiDetail(streamerId, begin.toString(), end.toString()));
     }
 
@@ -116,7 +132,14 @@ public class LiveStatsController extends BaseController
     @GetMapping("/advice")
     public AjaxResult advice()
     {
-        return AjaxResult.success(statsService.getAdviceData());
+        LiveStreamer own = getOwnStreamerIfRestricted();
+        Long streamerId = own == null ? null : own.getStreamerId();
+        List<Map<String, Object>> data = statsService.getAdviceData();
+        if (streamerId != null)
+        {
+            data = data.stream().filter(d -> streamerId.equals(d.get("streamerId"))).collect(java.util.stream.Collectors.toList());
+        }
+        return AjaxResult.success(data);
     }
 
     @PreAuthorize("@ss.hasPermi('live:stats:list')")

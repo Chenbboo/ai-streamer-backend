@@ -13,4 +13,10 @@ public interface ILiveStreamerService
     public LiveStreamer selectLiveStreamerById(Long streamerId);
 
     public LiveStreamer selectLiveStreamerByUserId(Long userId);
+
+    public int insertLiveStreamer(LiveStreamer streamer);
+
+    public int updateLiveStreamer(LiveStreamer streamer);
+
+    public int deleteLiveStreamerByIds(Long[] streamerIds);
 }

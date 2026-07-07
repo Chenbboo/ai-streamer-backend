@@ -33,4 +33,22 @@ public class LiveStreamerServiceImpl implements ILiveStreamerService
     {
         return streamerMapper.selectLiveStreamerByUserId(userId);
     }
+
+    @Override
+    public int insertLiveStreamer(LiveStreamer streamer)
+    {
+        return streamerMapper.insertLiveStreamer(streamer);
+    }
+
+    @Override
+    public int updateLiveStreamer(LiveStreamer streamer)
+    {
+        return streamerMapper.updateLiveStreamer(streamer);
+    }
+
+    @Override
+    public int deleteLiveStreamerByIds(Long[] streamerIds)
+    {
+        return streamerMapper.deleteLiveStreamerByIds(streamerIds);
+    }
 }

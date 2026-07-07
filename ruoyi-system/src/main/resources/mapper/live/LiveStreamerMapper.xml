@@ -25,6 +25,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectLiveStreamerList" parameterType="LiveStreamer" resultMap="LiveStreamerResult">
         <include refid="selectStreamerVo"/>
         <where>
+            <if test="streamerId != null">
+                and streamer_id = #{streamerId}
+            </if>
             <if test="stageName != null and stageName != ''">
                 and stage_name like concat('%', #{stageName}, '%')
             </if>
@@ -62,5 +65,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </set>
         where streamer_id = #{streamerId}
     </update>
+
+    <delete id="deleteLiveStreamerByIds" parameterType="String">
+        update live_streamer set status = '1' where streamer_id in
+        <foreach item="streamerId" collection="array" open="(" separator="," close=")">
+            #{streamerId}
+        </foreach>
+    </delete>
 
 </mapper>

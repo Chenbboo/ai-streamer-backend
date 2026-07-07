@@ -17,4 +17,6 @@ public interface LiveStreamerMapper
     public int insertLiveStreamer(LiveStreamer streamer);
 
     public int updateLiveStreamer(LiveStreamer streamer);
+
+    public int deleteLiveStreamerByIds(Long[] streamerIds);
 }
