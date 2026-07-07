@@ -13,14 +13,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectStreamerCards" resultType="map">
         select s.streamer_id as streamerId,
                s.stage_name as stageName,
-               coalesce(dr.totalXu, 0) as totalXu,
+               coalesce(gr.giftXu, 0) as totalXu,
                coalesce(dr.reportDays, 0) as reportDays,
                coalesce(gr.giftXu, 0) as giftXu,
                coalesce(gr.giftCustomers, 0) as giftCustomers,
                coalesce(cc.chatCustomers, 0) as chatCustomers
         from live_streamer s
         left join (
-            select streamer_id, sum(total_xu) as totalXu, count(*) as reportDays
+            select streamer_id, count(*) as reportDays
             from live_daily_report
             where biz_date between #{beginDate} and #{endDate}
             group by streamer_id
@@ -44,9 +44,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <select id="selectPreviousTotals" resultType="map">
         select s.streamer_id as streamerId,
-               coalesce(sum(r.total_xu), 0) as previousTotalXu
+               coalesce(sum(r.xu), 0) as previousTotalXu
         from live_streamer s
-        left join live_daily_report r
+        left join live_gift_record r
                on r.streamer_id = s.streamer_id
               and r.biz_date between #{beginDate} and #{endDate}
         where s.status = '0'
@@ -58,8 +58,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select date_format(r.biz_date, '%Y-%m-%d') as bizDate,
                r.streamer_id as streamerId,
                s.stage_name as stageName,
-               sum(r.total_xu) as totalXu
-        from live_daily_report r
+               sum(r.xu) as totalXu
+        from live_gift_record r
         left join live_streamer s on s.streamer_id = r.streamer_id
         where r.biz_date between #{beginDate} and #{endDate}
         <if test="streamerId != null">
