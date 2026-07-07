@@ -144,4 +144,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             raw_text = values(raw_text),
             upload_id = values(upload_id),
             update_by = #{upload.updateBy},
-       
+            update_time = sysdate()
+    </insert>
+
+</mapper>
