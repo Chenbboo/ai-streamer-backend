@@ -95,7 +95,7 @@ public class ConfigurableLiveRecognitionServiceImpl implements ILiveRecognitionS
         Map<String, Object> request = new HashMap<>();
         request.put("model", configValue("live.ai.model", "gpt-4o-mini"));
         request.put("messages", buildChatMessages(upload));
-        request.put("max_tokens", 1200);
+        request.put("max_tokens", 8000);
         request.put("temperature", 0);
         return parseAndNormalizeJson(callModel(endpoint, apiKey, request), "chat");
     }
@@ -208,34 +208,117 @@ public class ConfigurableLiveRecognitionServiceImpl implements ILiveRecognitionS
         }
         else if (LiveUpload.TYPE_CHAT.equals(upload.getUploadType()))
         {
-            schema = "{\"type\":\"chat\",\"provider\":\"model\",\"items\":[{\"nickname\":\"name\",\"messageCount\":1,\"badge\":\"\",\"confidence\":\"normal\"}]}";
+            schema = "{\"type\":\"chat\",\"provider\":\"model\",\"items\":[{\"nickname\":\"name\",\"messages\":[{\"sender\":\"customer\",\"messageType\":\"text\",\"content\":\"message text\"}],\"confidence\":\"normal\"}]}";
         }
         else
         {
             schema = "{\"type\":\"report\",\"provider\":\"model\",\"totalXu\":1234,\"rawText\":\"original text\"}";
         }
-        return "You are a live-stream operations OCR assistant. Extract structured data from the submitted screenshot or report text. "
-                + "Return valid JSON only, no markdown and no explanation. Target schema: " + schema
-                + ". If a field is unclear, use empty string or 0 and set confidence to low. "
+        String instruction = "You are a live-stream operations OCR assistant. Extract structured data from the submitted screenshot or report text. "
+                + "Return valid JSON only, no markdown and no explanation. Target schema: " + schema;
+        if (LiveUpload.TYPE_CHAT.equals(upload.getUploadType()))
+        {
+            instruction += ". For chat screenshots: extract each visible message with its sender (customer or streamer). "
+                    + "Preserve the original language (Vietnamese/Korean/Chinese/emoji). "
+                    + "Group messages by customer nickname. Include ALL visible messages, do not summarize. "
+                    + "For text messages: set messageType='text', put the text in content. "
+                    + "For video/image/audio messages: look at the thumbnail, describe what you see in content (e.g. '[视频:主播在跳舞]', '[图片:自拍]'). "
+                    + "Set messageType to 'video'/'image'/'audio' accordingly.";
+        }
+        instruction += ". If a field is unclear, use empty string or 0 and set confidence to low. "
                 + "Report text: " + (upload.getRawText() == null ? "" : upload.getRawText());
+        return instruction;
     }
 
     private String parseAndNormalizeJson(String responseText, String apiType)
     {
+        String output;
         try
         {
-            String output = "responses".equals(apiType) ? extractResponsesOutputText(responseText) : extractChatOutputText(responseText);
-            JsonNode parsed = OBJECT_MAPPER.readTree(cleanJson(output));
-            return OBJECT_MAPPER.writeValueAsString(parsed);
-        }
-        catch (ServiceException e)
-        {
-            throw e;
+            output = "responses".equals(apiType) ? extractResponsesOutputText(responseText) : extractChatOutputText(responseText);
         }
         catch (Exception e)
         {
-            throw new ServiceException("AI response is not valid JSON: " + e.getMessage());
+            throw new ServiceException("Failed to extract AI output: " + e.getMessage());
         }
+        output = cleanJson(output);
+        try
+        {
+            JsonNode parsed = OBJECT_MAPPER.readTree(output);
+            return OBJECT_MAPPER.writeValueAsString(parsed);
+        }
+        catch (Exception e)
+        {
+            // JSON may be truncated due to max_tokens, try to auto-close brackets
+            String fixed = autoCloseJson(output);
+            try
+            {
+                JsonNode parsed = OBJECT_MAPPER.readTree(fixed);
+                return OBJECT_MAPPER.writeValueAsString(parsed);
+            }
+            catch (Exception e2)
+            {
+                throw new ServiceException("AI response is not valid JSON: " + e.getMessage());
+            }
+        }
+    }
+
+    /** Try to auto-close truncated JSON by adding missing closing brackets */
+    private String autoCloseJson(String json)
+    {
+        if (json == null)
+        {
+            return "{}";
+        }
+        String s = json.trim();
+        // Track open brackets
+        int curly = 0, square = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = 0; i < s.length(); i++)
+        {
+            char c = s.charAt(i);
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\' && inString)
+            {
+                escaped = true;
+                continue;
+            }
+            if (c == '"')
+            {
+                inString = !inString;
+                continue;
+            }
+            if (inString)
+            {
+                continue;
+            }
+            if (c == '{') curly++;
+            else if (c == '}') curly--;
+            else if (c == '[') square++;
+            else if (c == ']') square--;
+        }
+        // If we're inside a string, close it first
+        if (inString)
+        {
+            s += "\"";
+        }
+        // Close any incomplete key-value pair by removing trailing partial
+        // Then add missing closing brackets
+        StringBuilder sb = new StringBuilder(s);
+        // Remove trailing comma or partial value if any
+        String trimmed = sb.toString().trim();
+        if (trimmed.endsWith(",") || trimmed.endsWith(":"))
+        {
+            sb = new StringBuilder(trimmed.substring(0, trimmed.length() - 1).trim());
+        }
+        while (square-- > 0) sb.append(']');
+        while (curly-- > 0) sb.append('}');
+        return sb.toString();
     }
 
     private String extractResponsesOutputText(String responseText) throws Exception
