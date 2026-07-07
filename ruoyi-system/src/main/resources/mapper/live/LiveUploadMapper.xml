@@ -99,8 +99,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </update>
 
     <insert id="insertCustomerIfAbsent">
-        insert into live_customer (nickname, badge, first_seen_date, last_seen_date, create_by, create_time)
-        values (#{nickname}, #{badge}, #{upload.bizDate}, #{upload.bizDate}, #{upload.updateBy}, sysdate())
+        insert into live_customer (streamer_id, nickname, badge, first_seen_date, last_seen_date, create_by, create_time)
+        values (#{upload.streamerId}, #{nickname}, #{badge}, #{upload.bizDate}, #{upload.bizDate}, #{upload.updateBy}, sysdate())
         on duplicate key update
             badge = if(badge = '', values(badge), badge),
             last_seen_date = values(last_seen_date),
@@ -111,7 +111,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectCustomerIdByNickname" resultType="Long">
         select customer_id
         from live_customer
-        where nickname = #{nickname}
+        where nickname = #{nickname} and streamer_id = #{streamerId} and merged_into_id is null
         limit 1
     </select>
 

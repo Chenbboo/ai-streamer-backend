@@ -199,7 +199,7 @@ public class LiveUploadServiceImpl implements ILiveUploadService
     private void confirmGift(LiveUpload upload, String nickname, String badge, Integer rankNo, Integer xu)
     {
         uploadMapper.insertCustomerIfAbsent(nickname, badge, upload);
-        Long customerId = uploadMapper.selectCustomerIdByNickname(nickname);
+        Long customerId = uploadMapper.selectCustomerIdByNickname(nickname, upload.getStreamerId());
         uploadMapper.upsertGiftRecord(upload, customerId, rankNo, xu);
     }
 
@@ -225,7 +225,7 @@ public class LiveUploadServiceImpl implements ILiveUploadService
     private void confirmChat(LiveUpload upload, String nickname, String badge)
     {
         uploadMapper.insertCustomerIfAbsent(nickname, badge, upload);
-        Long customerId = uploadMapper.selectCustomerIdByNickname(nickname);
+        Long customerId = uploadMapper.selectCustomerIdByNickname(nickname, upload.getStreamerId());
         uploadMapper.upsertChatContact(upload, customerId);
     }
 

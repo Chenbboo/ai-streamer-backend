@@ -30,7 +30,7 @@ public interface LiveUploadMapper
                                       @Param("badge") String badge,
                                       @Param("upload") LiveUpload upload);
 
-    public Long selectCustomerIdByNickname(String nickname);
+    public Long selectCustomerIdByNickname(@Param("nickname") String nickname, @Param("streamerId") Long streamerId);
 
     public int upsertGiftRecord(@Param("upload") LiveUpload upload,
                                 @Param("customerId") Long customerId,

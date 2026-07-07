@@ -107,4 +107,119 @@ public class LiveStatsServiceImpl implements ILiveStatsService
     {
         return value == null ? "" : String.valueOf(value);
     }
+
+    @Override
+    public List<Map<String, Object>> getStreamerCardDetail(Long streamerId)
+    {
+        return statsMapper.selectStreamerCardDetail(streamerId);
+    }
+
+    @Override
+    public List<Map<String, Object>> getHighValueUsers(Long streamerId, String month)
+    {
+        return statsMapper.selectHighValueUsers(streamerId, month);
+    }
+
+    @Override
+    public List<Map<String, Object>> getNewTippers(Long streamerId, String month)
+    {
+        return statsMapper.selectNewTippers(streamerId, month);
+    }
+
+    @Override
+    public List<Map<String, Object>> getWeijiStats(String statDate)
+    {
+        return statsMapper.selectWeijiStats(statDate);
+    }
+
+    @Override
+    public List<Map<String, Object>> getWeijiMonthStats(String beginDate, String endDate)
+    {
+        return statsMapper.selectWeijiMonthStats(beginDate, endDate);
+    }
+
+    @Override
+    public List<Map<String, Object>> getWeijiDetail(Long streamerId, String beginDate, String endDate)
+    {
+        return statsMapper.selectWeijiDetail(streamerId, beginDate, endDate);
+    }
+
+    @Override
+    public List<Map<String, Object>> getRecentChatRecords(Long streamerId, int limit)
+    {
+        return statsMapper.selectRecentChatRecords(streamerId, limit);
+    }
+
+    @Override
+    public List<Map<String, Object>> getRecentTipRecords(Long streamerId, int limit)
+    {
+        return statsMapper.selectRecentTipRecords(streamerId, limit);
+    }
+
+    @Override
+    public List<Map<String, Object>> getChatContent(Long streamerId, int limit)
+    {
+        return statsMapper.selectChatContent(streamerId, limit);
+    }
+
+    @Override
+    public List<Map<String, Object>> getAdviceData()
+    {
+        List<Map<String, Object>> dataList = statsMapper.selectAdviceData();
+        for (Map<String, Object> item : dataList)
+        {
+            long monthlyXu = longValue(item.get("monthlyXu"));
+            int tipCustomers = intValue(item.get("tipCustomers"));
+            int chatCustomers = intValue(item.get("chatCustomers"));
+            int silentCount = intValue(item.get("silentCount"));
+            int weijiTotal = intValue(item.get("weijiTotal"));
+
+            // 计算沉默率
+            int silentPct = weijiTotal > 0 ? Math.round(silentCount * 100f / weijiTotal) : 0;
+
+            // 构建状态文本
+            String status = "月流水 " + formatNumber(monthlyXu) + " · 送礼客户 " + tipCustomers + " · 聊天客户 " + chatCustomers + " · 沉默率 " + silentPct + "%";
+            item.put("status", status);
+
+            // 构建建议
+            java.util.List<String> tips = new java.util.ArrayList<>();
+            if (silentPct > 50)
+            {
+                tips.add("沉默率过高(" + silentPct + "%)，需要加强粉丝互动");
+            }
+            if (tipCustomers > 0 && chatCustomers < tipCustomers / 2)
+            {
+                tips.add("送礼客户(" + tipCustomers + ")远多于聊天客户(" + chatCustomers + ")，建议主动私信维护");
+            }
+            if (monthlyXu > 0 && tipCustomers < 5)
+            {
+                tips.add("打赏客户较少(" + tipCustomers + "人)，建议扩大粉丝基础");
+            }
+            if (tips.isEmpty())
+            {
+                tips.add("数据正常，继续保持");
+            }
+            item.put("tips", tips);
+
+            // 构建告警
+            String alert = "";
+            if (silentPct > 70)
+            {
+                alert = "⚠ 沉默率 " + silentPct + "%，超过70%警戒线";
+            }
+            item.put("alert", alert);
+        }
+        return dataList;
+    }
+
+    private long longValue(Object value)
+    {
+        if (value == null) return 0;
+        return Long.parseLong(String.valueOf(value));
+    }
+
+    private String formatNumber(long n)
+    {
+        return String.format("%,d", n);
+    }
 }
