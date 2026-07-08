@@ -394,28 +394,55 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from live_streamer s
         left join (
             select x.streamer_id,
-                   sum(case when x.has_gift = 1 and x.has_chat = 0 then 1 else 0 end) as red,
-                   sum(case when x.has_gift = 1 and x.has_chat = 1 then 1 else 0 end) as green,
-                   sum(case when x.has_gift = 0 and x.has_chat = 1 then 1 else 0 end) as yellow,
-                   0 as orange,
+                   -- 红色：月累计>1000 且最后一天是红色（有打赏无互动）
+                   sum(case when x.month_total > 1000 and x.last_day_has_gift = 1 and x.last_day_has_chat = 0 then 1 else 0 end) as red,
+                   -- 绿色：月累计>1000 且最后一天是绿色（有打赏有互动）
+                   sum(case when x.month_total > 1000 and x.last_day_has_gift = 1 and x.last_day_has_chat = 1 then 1 else 0 end) as green,
+                   -- 黄色：出现过黄色（无打赏有互动）
+                   sum(case when x.ever_yellow = 1 then 1 else 0 end) as yellow,
+                   -- 橙色：出现过橙色（有建联无互动）
+                   sum(case when x.ever_orange = 1 then 1 else 0 end) as orange,
                    count(*) as total
             from (
                 select c.streamer_id, c.customer_id,
+                    -- 月累计打赏
+                    coalesce((select sum(gr.xu) from live_gift_record gr
+                        where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id
+                          and gr.biz_date between #{beginDate} and #{endDate}), 0) as month_total,
+                    -- 最后一天是否有打赏
                     case when exists (
                         select 1 from live_gift_record gr
                         where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id
-                          and gr.biz_date between #{beginDate} and #{endDate} and gr.xu >= 1000
-                    ) then 1 else 0 end as has_gift,
+                          and gr.biz_date = #{endDate} and gr.xu >= 1000
+                    ) then 1 else 0 end as last_day_has_gift,
+                    -- 最后一天是否有互动
+                    case when exists (
+                        select 1 from live_chat_contact cc
+                        where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id
+                          and cc.biz_date = #{endDate} and cc.has_interaction = 1
+                    ) then 1 else 0 end as last_day_has_chat,
+                    -- 是否出现过黄色（无打赏有互动）
                     case when exists (
                         select 1 from live_chat_contact cc
                         where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id
                           and cc.biz_date between #{beginDate} and #{endDate} and cc.has_interaction = 1
-                    ) then 1 else 0 end as has_chat
+                          and not exists (
+                              select 1 from live_gift_record gr
+                              where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id
+                                and gr.biz_date = cc.biz_date and gr.xu >= 1000
+                          )
+                    ) then 1 else 0 end as ever_yellow,
+                    -- 是否出现过橙色（有建联无互动）
+                    case when exists (
+                        select 1 from live_chat_contact cc
+                        where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id
+                          and cc.biz_date between #{beginDate} and #{endDate} and cc.has_interaction = 0
+                    ) then 1 else 0 end as ever_orange
                 from live_customer c
                 where c.merged_into_id is null
                   and (
                       exists (select 1 from live_gift_record gr where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id and gr.xu >= 1000)
-                      or exists (select 1 from live_chat_contact cc where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id and cc.has_interaction = 1)
+                      or exists (select 1 from live_chat_contact cc where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id)
                   )
             ) x
             group by x.streamer_id
