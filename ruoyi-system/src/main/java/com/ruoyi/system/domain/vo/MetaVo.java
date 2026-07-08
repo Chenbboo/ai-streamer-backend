@@ -15,6 +15,11 @@ public class MetaVo
     private String title;
 
     /**
+     * 越南语标题
+     */
+    private String titleVi;
+
+    /**
      * 设置该路由的图标，对应路径src/assets/icons/svg
      */
     private String icon;
@@ -53,9 +58,29 @@ public class MetaVo
         this.link = link;
     }
 
+    public MetaVo(String title, String titleVi, String icon, String link)
+    {
+        this.title = title;
+        this.titleVi = titleVi;
+        this.icon = icon;
+        this.link = link;
+    }
+
     public MetaVo(String title, String icon, boolean noCache, String link)
     {
         this.title = title;
+        this.icon = icon;
+        this.noCache = noCache;
+        if (StringUtils.ishttp(link))
+        {
+            this.link = link;
+        }
+    }
+
+    public MetaVo(String title, String titleVi, String icon, boolean noCache, String link)
+    {
+        this.title = title;
+        this.titleVi = titleVi;
         this.icon = icon;
         this.noCache = noCache;
         if (StringUtils.ishttp(link))
@@ -82,6 +107,16 @@ public class MetaVo
     public void setTitle(String title)
     {
         this.title = title;
+    }
+
+    public String getTitleVi()
+    {
+        return titleVi;
+    }
+
+    public void setTitleVi(String titleVi)
+    {
+        this.titleVi = titleVi;
     }
 
     public String getIcon()
