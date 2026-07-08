@@ -437,7 +437,7 @@ public class ConfigurableLiveRecognitionServiceImpl implements ILiveRecognitionS
         }
         if (LiveUpload.TYPE_CHAT.equals(upload.getUploadType()))
         {
-            return "{\"type\":\"chat\",\"provider\":\"mock\",\"items\":[{\"nickname\":\"MockTopFan\",\"messageCount\":5,\"confidence\":\"normal\"},{\"nickname\":\"DemoBuyer\",\"messageCount\":3,\"confidence\":\"normal\"}]}";
+            return "{\"type\":\"chat\",\"provider\":\"mock\",\"items\":[{\"nickname\":\"MockTopFan\",\"messages\":[{\"sender\":\"customer\",\"messageType\":\"text\",\"content\":\"mock reply\"}],\"confidence\":\"normal\"},{\"nickname\":\"DemoBuyer\",\"messages\":[{\"sender\":\"customer\",\"messageType\":\"text\",\"content\":\"demo reply\"}],\"confidence\":\"normal\"}]}";
         }
         return "{\"type\":\"report\",\"provider\":\"mock\",\"totalXu\":" + parseTotalXu(upload.getRawText()) + ",\"rawText\":\"" + escapeJson(upload.getRawText()) + "\"}";
     }

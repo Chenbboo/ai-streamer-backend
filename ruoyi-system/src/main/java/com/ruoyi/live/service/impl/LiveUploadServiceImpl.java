@@ -181,6 +181,7 @@ public class LiveUploadServiceImpl implements ILiveUploadService
             throw new ServiceException("礼物榜识别结果不能为空");
         }
         int index = 1;
+        int saved = 0;
         for (JsonNode item : items)
         {
             String nickname = item.path("nickname").asText("");
@@ -193,6 +194,11 @@ public class LiveUploadServiceImpl implements ILiveUploadService
             Integer xu = item.path("xu").asInt(0);
             confirmGift(upload, nickname, badge, rankNo, xu);
             index++;
+            saved++;
+        }
+        if (saved == 0)
+        {
+            throw new ServiceException("礼物榜识别结果没有可入库的客户昵称");
         }
     }
 
@@ -210,6 +216,7 @@ public class LiveUploadServiceImpl implements ILiveUploadService
         {
             throw new ServiceException("聊天截图识别结果不能为空");
         }
+        int saved = 0;
         for (JsonNode item : items)
         {
             String nickname = item.path("nickname").asText("");
@@ -233,6 +240,11 @@ public class LiveUploadServiceImpl implements ILiveUploadService
                 }
             }
             confirmChat(upload, nickname, badge, hasInteraction);
+            saved++;
+        }
+        if (saved == 0)
+        {
+            throw new ServiceException("聊天截图识别结果没有可入库的客户昵称");
         }
     }
 
@@ -251,7 +263,7 @@ public class LiveUploadServiceImpl implements ILiveUploadService
         }
         if (LiveUpload.TYPE_CHAT.equals(upload.getUploadType()))
         {
-            return "{\"type\":\"chat\",\"items\":[{\"nickname\":\"MockTopFan\",\"messageCount\":5,\"confidence\":\"normal\"},{\"nickname\":\"DemoBuyer\",\"messageCount\":3,\"confidence\":\"normal\"}]}";
+            return "{\"type\":\"chat\",\"items\":[{\"nickname\":\"MockTopFan\",\"messages\":[{\"sender\":\"customer\",\"messageType\":\"text\",\"content\":\"mock reply\"}],\"confidence\":\"normal\"},{\"nickname\":\"DemoBuyer\",\"messages\":[{\"sender\":\"customer\",\"messageType\":\"text\",\"content\":\"demo reply\"}],\"confidence\":\"normal\"}]}";
         }
         return "{\"type\":\"report\",\"totalXu\":" + parseTotalXu(upload.getRawText()) + ",\"rawText\":\"" + escapeJson(upload.getRawText()) + "\"}";
     }
