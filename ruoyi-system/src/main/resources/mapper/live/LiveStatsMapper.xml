@@ -90,6 +90,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                coalesce(newTippers.daily, 0) as newTipDaily,
                coalesce(newTippers.weekly, 0) as newTipWeekly,
                coalesce(newTippers.monthly, 0) as newTipMonthly,
+               coalesce(newTippers.dailyAmount, 0) as newTipDailyAmount,
+               coalesce(newTippers.weeklyAmount, 0) as newTipWeeklyAmount,
                coalesce(newTippers.monthlyAmount, 0) as newTipMonthlyAmount,
                -- 客户统计
                coalesce(monthlyCustomers.count, 0) as monthlyCustomers,
@@ -123,23 +125,28 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             where date_format(biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m')
             group by streamer_id
         ) monthly on monthly.streamer_id = s.streamer_id
-        -- 新增粉丝：首次出现在该日期
+        -- 新增粉丝：首次聊天出现在该日期（只统计聊天客户）
         left join (
-            select streamer_id,
-                   count(distinct case when first_seen_date = date_sub(curdate(), interval 1 day) then customer_id end) as daily,
-                   count(distinct case when first_seen_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then customer_id end) as weekly,
-                   count(distinct case when date_format(first_seen_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then customer_id end) as monthly
-            from live_customer
-            where merged_into_id is null
-            group by streamer_id
+            select cc.streamer_id,
+                   count(distinct case when cc.is_first = 1 and cc.biz_date = date_sub(curdate(), interval 1 day) then cc.customer_id end) as daily,
+                   count(distinct case when cc.is_first = 1 and cc.biz_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then cc.customer_id end) as weekly,
+                   count(distinct case when cc.is_first = 1 and date_format(cc.biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then cc.customer_id end) as monthly
+            from (
+                select cc2.streamer_id, cc2.customer_id, cc2.biz_date,
+                       case when cc2.biz_date = min(cc2.biz_date) over (partition by cc2.streamer_id, cc2.customer_id) then 1 else 0 end as is_first
+                from live_chat_contact cc2
+            ) cc
+            where cc.is_first = 1
+            group by cc.streamer_id
         ) newFans on newFans.streamer_id = s.streamer_id
-        -- 新增互动：聊天联系人
+        -- 新增互动：有互动的聊天联系人（customer有回复）
         left join (
             select streamer_id,
                    count(distinct case when biz_date = date_sub(curdate(), interval 1 day) then customer_id end) as daily,
                    count(distinct case when biz_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then customer_id end) as weekly,
                    count(distinct case when date_format(biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then customer_id end) as monthly
             from live_chat_contact
+            where has_interaction = 1
             group by streamer_id
         ) chat on chat.streamer_id = s.streamer_id
         -- 新增用户打赏：首次打赏在本月
@@ -148,6 +155,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                    count(distinct case when gr.biz_date = date_sub(curdate(), interval 1 day) then gr.customer_id end) as daily,
                    count(distinct case when gr.biz_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then gr.customer_id end) as weekly,
                    count(distinct case when date_format(gr.biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then gr.customer_id end) as monthly,
+                   sum(case when gr.biz_date = date_sub(curdate(), interval 1 day) then gr.xu else 0 end) as dailyAmount,
+                   sum(case when gr.biz_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then gr.xu else 0 end) as weeklyAmount,
                    sum(case when date_format(gr.biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then gr.xu else 0 end) as monthlyAmount
             from live_gift_record gr
             join live_customer c on c.customer_id = gr.customer_id
@@ -254,13 +263,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                     ) then 1 else 0 end as has_gift,
                     case when exists (
                         select 1 from live_chat_contact cc
-                        where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id and cc.biz_date = #{statDate}
+                        where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id and cc.biz_date = #{statDate} and cc.has_interaction = 1
                     ) then 1 else 0 end as has_chat
                 from live_customer c
                 where c.merged_into_id is null
                   and (
                       exists (select 1 from live_gift_record gr where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id and gr.xu >= 1000)
-                      or exists (select 1 from live_chat_contact cc where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id)
+                      or exists (select 1 from live_chat_contact cc where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id and cc.has_interaction = 1)
                   )
             ) x
             group by x.streamer_id
@@ -337,7 +346,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                     case when exists (
                         select 1 from live_chat_contact cc
                         where cc.customer_id = c2.customer_id and cc.streamer_id = c2.streamer_id
-                          and date_format(cc.biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m')
+                          and date_format(cc.biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m') and cc.has_interaction = 1
                     ) then 1 else 0 end as has_chat
                 from live_customer c2
                 where c2.merged_into_id is null
@@ -367,7 +376,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and not exists (
               select 1 from live_chat_contact cc
               where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id
-                and cc.biz_date between #{beginDate} and #{endDate}
+                and cc.biz_date between #{beginDate} and #{endDate} and cc.has_interaction = 1
           )
         group by c.customer_id, c.nickname, c.badge
         order by totalXu desc
@@ -400,13 +409,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                     case when exists (
                         select 1 from live_chat_contact cc
                         where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id
-                          and cc.biz_date between #{beginDate} and #{endDate}
+                          and cc.biz_date between #{beginDate} and #{endDate} and cc.has_interaction = 1
                     ) then 1 else 0 end as has_chat
                 from live_customer c
                 where c.merged_into_id is null
                   and (
                       exists (select 1 from live_gift_record gr where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id and gr.xu >= 1000)
-                      or exists (select 1 from live_chat_contact cc where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id)
+                      or exists (select 1 from live_chat_contact cc where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id and cc.has_interaction = 1)
                   )
             ) x
             group by x.streamer_id

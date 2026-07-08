@@ -218,15 +218,29 @@ public class LiveUploadServiceImpl implements ILiveUploadService
                 continue;
             }
             String badge = item.path("badge").asText("");
-            confirmChat(upload, nickname, badge);
+            // 判断是否有互动：customer 至少回复了1条消息
+            boolean hasInteraction = false;
+            JsonNode messages = item.path("messages");
+            if (messages.isArray())
+            {
+                for (JsonNode msg : messages)
+                {
+                    if ("customer".equals(msg.path("sender").asText("")))
+                    {
+                        hasInteraction = true;
+                        break;
+                    }
+                }
+            }
+            confirmChat(upload, nickname, badge, hasInteraction);
         }
     }
 
-    private void confirmChat(LiveUpload upload, String nickname, String badge)
+    private void confirmChat(LiveUpload upload, String nickname, String badge, boolean hasInteraction)
     {
         uploadMapper.insertCustomerIfAbsent(nickname, badge, upload);
         Long customerId = uploadMapper.selectCustomerIdByNickname(nickname, upload.getStreamerId());
-        uploadMapper.upsertChatContact(upload, customerId);
+        uploadMapper.upsertChatContact(upload, customerId, hasInteraction ? 1 : 0);
     }
 
     private String buildMockAiResult(LiveUpload upload)

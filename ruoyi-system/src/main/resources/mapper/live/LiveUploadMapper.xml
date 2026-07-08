@@ -130,10 +130,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </insert>
 
     <insert id="upsertChatContact">
-        insert into live_chat_contact (biz_date, streamer_id, customer_id, upload_id, create_time)
-        values (#{upload.bizDate}, #{upload.streamerId}, #{customerId}, #{upload.uploadId}, sysdate())
+        insert into live_chat_contact (biz_date, streamer_id, customer_id, upload_id, has_interaction, create_time)
+        values (#{upload.bizDate}, #{upload.streamerId}, #{customerId}, #{upload.uploadId}, #{hasInteraction}, sysdate())
         on duplicate key update
-            upload_id = values(upload_id)
+            upload_id = values(upload_id),
+            has_interaction = greatest(has_interaction, values(has_interaction))
     </insert>
 
     <insert id="upsertDailyReport">

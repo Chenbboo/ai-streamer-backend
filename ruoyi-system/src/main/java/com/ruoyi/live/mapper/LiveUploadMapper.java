@@ -38,7 +38,8 @@ public interface LiveUploadMapper
                                 @Param("xu") Integer xu);
 
     public int upsertChatContact(@Param("upload") LiveUpload upload,
-                                 @Param("customerId") Long customerId);
+                                 @Param("customerId") Long customerId,
+                                 @Param("hasInteraction") Integer hasInteraction);
 
     public int upsertDailyReport(@Param("upload") LiveUpload upload,
                                 @Param("totalXu") Integer totalXu,
