@@ -13,14 +13,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectStreamerCards" resultType="map">
         select s.streamer_id as streamerId,
                s.stage_name as stageName,
-               coalesce(gr.giftXu, 0) as totalXu,
+               coalesce(dr.totalXu, 0) as totalXu,
                coalesce(dr.reportDays, 0) as reportDays,
                coalesce(gr.giftXu, 0) as giftXu,
                coalesce(gr.giftCustomers, 0) as giftCustomers,
                coalesce(cc.chatCustomers, 0) as chatCustomers
         from live_streamer s
         left join (
-            select streamer_id, count(*) as reportDays
+            select streamer_id, sum(total_xu) as totalXu, count(*) as reportDays
             from live_daily_report
             where biz_date between #{beginDate} and #{endDate}
             group by streamer_id
@@ -44,9 +44,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <select id="selectPreviousTotals" resultType="map">
         select s.streamer_id as streamerId,
-               coalesce(sum(r.xu), 0) as previousTotalXu
+               coalesce(sum(r.total_xu), 0) as previousTotalXu
         from live_streamer s
-        left join live_gift_record r
+        left join live_daily_report r
                on r.streamer_id = s.streamer_id
               and r.biz_date between #{beginDate} and #{endDate}
         where s.status = '0'
@@ -58,8 +58,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select date_format(r.biz_date, '%Y-%m-%d') as bizDate,
                r.streamer_id as streamerId,
                s.stage_name as stageName,
-               sum(r.xu) as totalXu
-        from live_gift_record r
+               sum(r.total_xu) as totalXu
+        from live_daily_report r
         left join live_streamer s on s.streamer_id = r.streamer_id
         where r.biz_date between #{beginDate} and #{endDate}
         <if test="streamerId != null">
@@ -99,69 +99,78 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from live_streamer s
         -- 送礼：日
         left join (
-            select streamer_id, sum(xu) as xu
-            from live_gift_record
+            select streamer_id, sum(total_xu) as xu
+            from live_daily_report
             where biz_date = date_sub(curdate(), interval 1 day)
             group by streamer_id
         ) daily on daily.streamer_id = s.streamer_id
         -- 送礼：周
         left join (
-            select streamer_id, sum(xu) as xu
-            from live_gift_record
+            select streamer_id, sum(total_xu) as xu
+            from live_daily_report
             where biz_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate()
             group by streamer_id
         ) weekly on weekly.streamer_id = s.streamer_id
         -- 送礼：上周
         left join (
-            select streamer_id, sum(xu) as xu
-            from live_gift_record
+            select streamer_id, sum(total_xu) as xu
+            from live_daily_report
             where biz_date between date_sub(curdate(), interval weekday(curdate()) + 7 day) and date_sub(curdate(), interval weekday(curdate()) + 1 day)
             group by streamer_id
         ) lastWeek on lastWeek.streamer_id = s.streamer_id
         -- 送礼：月
         left join (
-            select streamer_id, sum(xu) as xu
-            from live_gift_record
+            select streamer_id, sum(total_xu) as xu
+            from live_daily_report
             where date_format(biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m')
             group by streamer_id
         ) monthly on monthly.streamer_id = s.streamer_id
-        -- 新增粉丝：首次聊天出现在该日期（只统计聊天客户）
+        -- 新增粉丝：首次出现的客户（只统计有聊天记录的）
+        left join (
+            select c.streamer_id,
+                   count(distinct case when c.first_seen_date = date_sub(curdate(), interval 1 day) then c.customer_id end) as daily,
+                   count(distinct case when c.first_seen_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then c.customer_id end) as weekly,
+                   count(distinct case when date_format(c.first_seen_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then c.customer_id end) as monthly
+            from live_customer c
+            where c.merged_into_id is null
+              and exists (select 1 from live_chat_contact cc where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id)
+            group by c.streamer_id
+        ) newFans on newFans.streamer_id = s.streamer_id
+        -- 新增互动：新增粉丝中有互动的（customer有回复）
         left join (
             select cc.streamer_id,
-                   count(distinct case when cc.is_first = 1 and cc.biz_date = date_sub(curdate(), interval 1 day) then cc.customer_id end) as daily,
-                   count(distinct case when cc.is_first = 1 and cc.biz_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then cc.customer_id end) as weekly,
-                   count(distinct case when cc.is_first = 1 and date_format(cc.biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then cc.customer_id end) as monthly
-            from (
-                select cc2.streamer_id, cc2.customer_id, cc2.biz_date,
-                       case when cc2.biz_date = min(cc2.biz_date) over (partition by cc2.streamer_id, cc2.customer_id) then 1 else 0 end as is_first
-                from live_chat_contact cc2
-            ) cc
-            where cc.is_first = 1
+                   count(distinct case when cc.has_interaction = 1 and cc.biz_date = date_sub(curdate(), interval 1 day) then cc.customer_id end) as daily,
+                   count(distinct case when cc.has_interaction = 1 and cc.biz_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then cc.customer_id end) as weekly,
+                   count(distinct case when cc.has_interaction = 1 and date_format(cc.biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then cc.customer_id end) as monthly
+            from live_chat_contact cc
+            where cc.customer_id in (
+                select c.customer_id from live_customer c
+                where c.streamer_id = cc.streamer_id
+                  and date_format(c.first_seen_date, '%Y-%m') = date_format(curdate(), '%Y-%m')
+            )
             group by cc.streamer_id
-        ) newFans on newFans.streamer_id = s.streamer_id
-        -- 新增互动：有互动的聊天联系人（customer有回复）
-        left join (
-            select streamer_id,
-                   count(distinct case when biz_date = date_sub(curdate(), interval 1 day) then customer_id end) as daily,
-                   count(distinct case when biz_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then customer_id end) as weekly,
-                   count(distinct case when date_format(biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then customer_id end) as monthly
-            from live_chat_contact
-            where has_interaction = 1
-            group by streamer_id
         ) chat on chat.streamer_id = s.streamer_id
-        -- 新增用户打赏：首次打赏在本月
+        -- 新增用户打赏：首次打赏在本月（只计算第一次打赏的金额）
         left join (
-            select gr.streamer_id,
-                   count(distinct case when gr.biz_date = date_sub(curdate(), interval 1 day) then gr.customer_id end) as daily,
-                   count(distinct case when gr.biz_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then gr.customer_id end) as weekly,
-                   count(distinct case when date_format(gr.biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then gr.customer_id end) as monthly,
-                   sum(case when gr.biz_date = date_sub(curdate(), interval 1 day) then gr.xu else 0 end) as dailyAmount,
-                   sum(case when gr.biz_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then gr.xu else 0 end) as weeklyAmount,
-                   sum(case when date_format(gr.biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then gr.xu else 0 end) as monthlyAmount
-            from live_gift_record gr
-            join live_customer c on c.customer_id = gr.customer_id
-            where date_format(c.first_seen_date, '%Y-%m') = date_format(curdate(), '%Y-%m')
-            group by gr.streamer_id
+            select nf.streamer_id,
+                   count(distinct case when nf.first_gift_date = date_sub(curdate(), interval 1 day) then nf.customer_id end) as daily,
+                   count(distinct case when nf.first_gift_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then nf.customer_id end) as weekly,
+                   count(distinct case when date_format(nf.first_gift_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then nf.customer_id end) as monthly,
+                   sum(case when nf.first_gift_date = date_sub(curdate(), interval 1 day) then nf.first_xu else 0 end) as dailyAmount,
+                   sum(case when nf.first_gift_date between date_sub(curdate(), interval weekday(curdate()) day) and curdate() then nf.first_xu else 0 end) as weeklyAmount,
+                   sum(case when date_format(nf.first_gift_date, '%Y-%m') = date_format(curdate(), '%Y-%m') then nf.first_xu else 0 end) as monthlyAmount
+            from (
+                select gr.streamer_id, gr.customer_id,
+                       min(gr.biz_date) as first_gift_date,
+                       (select gr2.xu from live_gift_record gr2
+                        where gr2.streamer_id = gr.streamer_id and gr2.customer_id = gr.customer_id
+                        order by gr2.biz_date limit 1) as first_xu
+                from live_gift_record gr
+                join live_customer c on c.customer_id = gr.customer_id
+                where date_format(c.first_seen_date, '%Y-%m') = date_format(curdate(), '%Y-%m')
+                group by gr.streamer_id, gr.customer_id
+            ) nf
+            group by nf.streamer_id
         ) newTippers on newTippers.streamer_id = s.streamer_id
         -- 客户统计
         left join (
@@ -359,7 +368,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by s.streamer_id
     </select>
 
-    <!-- 维系详情：有打赏+无互动的粉丝列表 -->
+    <!-- 维系详情：月累计>1000 且最后一天打赏无互动 -->
     <select id="selectWeijiDetail" resultType="map">
         select c.customer_id as customerId,
                c.nickname,
@@ -372,11 +381,20 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where c.merged_into_id is null
           and c.streamer_id = #{streamerId}
           and gr.biz_date between #{beginDate} and #{endDate}
-          and gr.xu >= 1000
+          and (
+              select sum(gr2.xu) from live_gift_record gr2
+              where gr2.customer_id = c.customer_id and gr2.streamer_id = c.streamer_id
+                and gr2.biz_date between #{beginDate} and #{endDate}
+          ) > 1000
           and not exists (
               select 1 from live_chat_contact cc
               where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id
-                and cc.biz_date between #{beginDate} and #{endDate} and cc.has_interaction = 1
+                and cc.biz_date = (
+                    select max(gr3.biz_date) from live_gift_record gr3
+                    where gr3.customer_id = c.customer_id and gr3.streamer_id = c.streamer_id
+                      and gr3.biz_date between #{beginDate} and #{endDate}
+                )
+                and cc.has_interaction = 1
           )
         group by c.customer_id, c.nickname, c.badge
         order by totalXu desc
@@ -420,7 +438,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                                 and gr.biz_date between #{beginDate} and #{endDate} and gr.xu >= 1000
                           )
                     ) then 1 else 0 end as last_gift_has_chat,
-                    -- 是否出现过黄色（无打赏有互动）
+                    -- 是否出现过黄色（本月无打赏有互动）
                     case when exists (
                         select 1 from live_chat_contact cc
                         where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id
@@ -428,7 +446,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                           and not exists (
                               select 1 from live_gift_record gr
                               where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id
-                                and gr.biz_date = cc.biz_date and gr.xu >= 1000
+                                and gr.biz_date between #{beginDate} and #{endDate} and gr.xu >= 1000
                           )
                     ) then 1 else 0 end as ever_yellow,
                     -- 是否出现过橙色（有建联无互动）
