@@ -34,7 +34,12 @@ public class MockLiveRecognitionServiceImpl implements ILiveRecognitionService
         Integer total = 0;
         while (matcher.find())
         {
-            total = Integer.valueOf(matcher.group(1));
+            try
+            {
+                long val = Long.parseLong(matcher.group(1));
+                total = val > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) val;
+            }
+            catch (NumberFormatException e) { }
         }
         return total;
     }

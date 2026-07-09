@@ -449,20 +449,31 @@ public class ConfigurableLiveRecognitionServiceImpl implements ILiveRecognitionS
             return 0;
         }
         String text = rawText.replace(",", "");
-        // 优先取 Tổng/总 关键词后面的数字
         Matcher keyword = Pattern.compile("(?i)(?:tổng|tong|总计|总)\\D{0,5}(\\d+)").matcher(text);
         if (keyword.find())
         {
-            return Integer.valueOf(keyword.group(1));
+            return toIntSafely(keyword.group(1));
         }
-        // 兜底:取文本中最大的数字,避免误取末尾的时长/百分比等
         Matcher matcher = Pattern.compile("(\\d{2,})").matcher(text);
         int max = 0;
         while (matcher.find())
         {
-            max = Math.max(max, Integer.parseInt(matcher.group(1)));
+            max = Math.max(max, toIntSafely(matcher.group(1)));
         }
         return max;
+    }
+
+    private int toIntSafely(String s)
+    {
+        try
+        {
+            long val = Long.parseLong(s);
+            return val > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) val;
+        }
+        catch (NumberFormatException e)
+        {
+            return 0;
+        }
     }
 
     private String escapeJson(String text)

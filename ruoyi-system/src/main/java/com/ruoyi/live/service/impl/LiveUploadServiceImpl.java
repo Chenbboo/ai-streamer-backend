@@ -162,7 +162,9 @@ public class LiveUploadServiceImpl implements ILiveUploadService
         }
         else if (LiveUpload.TYPE_REPORT.equals(upload.getUploadType()))
         {
-            Integer totalXu = result.path("totalXu").asInt(parseTotalXu(upload.getRawText()));
+            Integer totalXu = result.has("totalXu") && !result.path("totalXu").isNull()
+                    ? result.path("totalXu").asInt()
+                    : parseTotalXu(upload.getRawText());
             String rawText = result.path("rawText").asText(upload.getRawText());
             uploadMapper.upsertDailyReport(upload, totalXu, rawText);
         }
@@ -295,16 +297,29 @@ public class LiveUploadServiceImpl implements ILiveUploadService
         Matcher keyword = Pattern.compile("(?i)(?:tổng|tong|总计|总)\\D{0,5}(\\d+)").matcher(text);
         if (keyword.find())
         {
-            return Integer.valueOf(keyword.group(1));
+            return toIntSafely(keyword.group(1));
         }
         // 兜底:取文本中最大的数字,避免误取末尾的时长/百分比等
         Matcher matcher = Pattern.compile("(\\d{2,})").matcher(text);
         int max = 0;
         while (matcher.find())
         {
-            max = Math.max(max, Integer.parseInt(matcher.group(1)));
+            max = Math.max(max, toIntSafely(matcher.group(1)));
         }
         return max;
+    }
+
+    private int toIntSafely(String s)
+    {
+        try
+        {
+            long val = Long.parseLong(s);
+            return val > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) val;
+        }
+        catch (NumberFormatException e)
+        {
+            return 0;
+        }
     }
 
     private String escapeJson(String text)
