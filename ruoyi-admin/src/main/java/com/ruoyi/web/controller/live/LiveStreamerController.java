@@ -127,7 +127,11 @@ public class LiveStreamerController extends BaseController
 
         // 1. 创建系统用户
         com.ruoyi.common.core.domain.entity.SysUser user = new com.ruoyi.common.core.domain.entity.SysUser();
-        String userName = tiktokHandle != null ? tiktokHandle.replace("@", "") : stageName.replaceAll("\\s+", "").toLowerCase();
+        String userName = (tiktokHandle != null && !tiktokHandle.isEmpty()) ? tiktokHandle.replace("@", "") : stageName.replaceAll("\\s+", "").toLowerCase();
+        if (userName.isEmpty())
+        {
+            userName = "streamer_" + System.currentTimeMillis() % 100000;
+        }
         user.setUserName(userName);
         user.setNickName(stageName);
         user.setPassword(SecurityUtils.encryptPassword(password));
