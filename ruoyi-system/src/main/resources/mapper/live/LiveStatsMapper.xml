@@ -263,7 +263,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by contactRate asc, s.streamer_id
     </select>
 
-    <!-- 当日维系统计（去重粉丝：有打赏+无互动=红，有打赏+有互动=绿，无打赏+有互动=黄） -->
+    <!-- 当日维系统计（红/绿按月累计≥1000判定，黄/橙按当天互动和建联判定） -->
     <select id="selectWeijiStats" resultType="map">
         select s.streamer_id as streamerId,
                s.stage_name as stageName,
@@ -284,8 +284,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 select c.streamer_id, c.customer_id,
                     case when exists (
                         select 1 from live_gift_record gr
-                        where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id and gr.biz_date = #{statDate} and gr.xu >= 1000
-                    ) then 1 else 0 end as has_gift,
+                        where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id and gr.biz_date = #{statDate}
+                    ) and (
+                        select coalesce(sum(gr2.xu), 0) from live_gift_record gr2
+                        where gr2.customer_id = c.customer_id and gr2.streamer_id = c.streamer_id
+                        and date_format(gr2.biz_date, '%Y-%m') = date_format(#{statDate}, '%Y-%m')
+                    ) >= 1000 then 1 else 0 end as has_gift,
                     case when exists (
                         select 1 from live_chat_contact cc
                         where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id and cc.biz_date = #{statDate} and cc.has_interaction = 1
@@ -297,7 +301,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 from live_customer c
                 where c.merged_into_id is null
                   and (
-                      exists (select 1 from live_gift_record gr where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id and gr.biz_date = #{statDate} and gr.xu >= 1000)
+                      (exists (select 1 from live_gift_record gr where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id and gr.biz_date = #{statDate})
+                       and (select coalesce(sum(gr2.xu), 0) from live_gift_record gr2 where gr2.customer_id = c.customer_id and gr2.streamer_id = c.streamer_id and date_format(gr2.biz_date, '%Y-%m') = date_format(#{statDate}, '%Y-%m')) >= 1000)
                       or exists (select 1 from live_chat_contact cc where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id and cc.biz_date = #{statDate})
                   )
             ) x
