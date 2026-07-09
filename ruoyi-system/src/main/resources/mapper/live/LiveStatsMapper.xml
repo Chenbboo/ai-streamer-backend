@@ -447,14 +447,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         left join (
             select x.streamer_id,
                    -- 红色：月累计>1000 且该客户最后一天有打赏无互动
-                   sum(case when x.month_total > 1000 and x.last_gift_has_chat = 0 then 1 else 0 end) as red,
+                   sum(case when x.month_total >= 1000 and x.last_gift_has_chat = 0 then 1 else 0 end) as red,
                    -- 绿色：月累计>1000 且该客户最后一天有打赏有互动
-                   sum(case when x.month_total > 1000 and x.last_gift_has_chat = 1 then 1 else 0 end) as green,
+                   sum(case when x.month_total >= 1000 and x.last_gift_has_chat = 1 then 1 else 0 end) as green,
                    -- 黄色：出现过黄色（无打赏有互动）
-                   sum(case when not (x.month_total > 1000) and x.ever_yellow = 1 then 1 else 0 end) as yellow,
+                   sum(case when not (x.month_total >= 1000) and x.ever_yellow = 1 then 1 else 0 end) as yellow,
                    -- 橙色：出现过橙色（有建联无互动）
                    sum(case when x.month_total = 0 and x.ever_yellow = 0 and x.ever_orange = 1 then 1 else 0 end) as orange,
-                   sum(case when x.month_total > 1000 or x.ever_yellow = 1 or x.ever_orange = 1 then 1 else 0 end) as total
+                   sum(case when x.month_total >= 1000 or x.ever_yellow = 1 or x.ever_orange = 1 then 1 else 0 end) as total
             from (
                 select c.streamer_id, c.customer_id,
                     -- 月累计打赏
