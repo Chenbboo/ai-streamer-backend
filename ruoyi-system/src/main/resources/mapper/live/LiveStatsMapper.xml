@@ -162,22 +162,28 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             from (
                 select gr.streamer_id, gr.customer_id,
                        min(gr.biz_date) as first_gift_date,
-                       (select gr2.xu from live_gift_record gr2
+                       (select sum(gr2.xu) from live_gift_record gr2
                         where gr2.streamer_id = gr.streamer_id and gr2.customer_id = gr.customer_id
-                        order by gr2.biz_date limit 1) as first_xu
+                          and gr2.biz_date = (
+                              select min(gr3.biz_date) from live_gift_record gr3
+                              where gr3.streamer_id = gr.streamer_id and gr3.customer_id = gr.customer_id
+                          )) as first_xu
                 from live_gift_record gr
-                join live_customer c on c.customer_id = gr.customer_id
-                where date_format(c.first_seen_date, '%Y-%m') = date_format(curdate(), '%Y-%m')
                 group by gr.streamer_id, gr.customer_id
             ) nf
             group by nf.streamer_id
         ) newTippers on newTippers.streamer_id = s.streamer_id
         -- 客户统计
         left join (
-            select streamer_id, count(distinct customer_id) as count,
-                   count(distinct case when xu >= 1000 then customer_id end) as highValue
-            from live_gift_record
-            where date_format(biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m')
+            select streamer_id,
+                   count(*) as count,
+                   sum(case when total_xu >= 1000 then 1 else 0 end) as highValue
+            from (
+                select streamer_id, customer_id, sum(xu) as total_xu
+                from live_gift_record
+                where date_format(biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m')
+                group by streamer_id, customer_id
+            ) mc
             group by streamer_id
         ) monthlyCustomers on monthlyCustomers.streamer_id = s.streamer_id
         where s.status = '0'
@@ -206,14 +212,20 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select c.customer_id as customerId,
                c.nickname,
                c.badge,
-               c.first_seen_date as firstTipDate,
+               ft.first_gift_date as firstTipDate,
                sum(gr.xu) as totalXu
-        from live_gift_record gr
-        join live_customer c on c.customer_id = gr.customer_id
-        where gr.streamer_id = #{streamerId}
+        from (
+            select streamer_id, customer_id, min(biz_date) as first_gift_date
+            from live_gift_record
+            where streamer_id = #{streamerId}
+            group by streamer_id, customer_id
+        ) ft
+        join live_gift_record gr on gr.streamer_id = ft.streamer_id and gr.customer_id = ft.customer_id
+        join live_customer c on c.customer_id = ft.customer_id and c.streamer_id = ft.streamer_id
+        where date_format(ft.first_gift_date, '%Y-%m') = #{month}
           and date_format(gr.biz_date, '%Y-%m') = #{month}
-          and date_format(c.first_seen_date, '%Y-%m') = #{month}
-        group by c.customer_id, c.nickname, c.badge, c.first_seen_date
+          and ft.streamer_id = #{streamerId}
+        group by c.customer_id, c.nickname, c.badge, ft.first_gift_date
         order by totalXu desc
     </select>
 
@@ -230,10 +242,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from live_streamer s
         left join (
             select streamer_id,
-                   count(distinct customer_id) as activeCustomers,
-                   count(distinct case when xu >= 1000 then customer_id end) as highValueCustomers
-            from live_gift_record
-            where biz_date between #{beginDate} and #{endDate}
+                   count(*) as activeCustomers,
+                   sum(case when total_xu >= 1000 then 1 else 0 end) as highValueCustomers
+            from (
+                select streamer_id, customer_id, sum(xu) as total_xu
+                from live_gift_record
+                where biz_date between #{beginDate} and #{endDate}
+                group by streamer_id, customer_id
+            ) gc
             group by streamer_id
         ) g on g.streamer_id = s.streamer_id
         left join (
@@ -262,7 +278,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                    sum(case when x.has_gift = 1 and x.has_chat = 0 then 1 else 0 end) as red,
                    sum(case when x.has_gift = 1 and x.has_chat = 1 then 1 else 0 end) as green,
                    sum(case when x.has_gift = 0 and x.has_chat = 1 then 1 else 0 end) as yellow,
-                   0 as orange,
+                   sum(case when x.has_gift = 0 and x.has_chat = 0 and x.has_contact_no_interaction = 1 then 1 else 0 end) as orange,
                    count(*) as total
             from (
                 select c.streamer_id, c.customer_id,
@@ -273,12 +289,16 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                     case when exists (
                         select 1 from live_chat_contact cc
                         where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id and cc.biz_date = #{statDate} and cc.has_interaction = 1
-                    ) then 1 else 0 end as has_chat
+                    ) then 1 else 0 end as has_chat,
+                    case when exists (
+                        select 1 from live_chat_contact cc
+                        where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id and cc.biz_date = #{statDate} and cc.has_interaction = 0
+                    ) then 1 else 0 end as has_contact_no_interaction
                 from live_customer c
                 where c.merged_into_id is null
                   and (
-                      exists (select 1 from live_gift_record gr where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id and gr.xu >= 1000)
-                      or exists (select 1 from live_chat_contact cc where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id and cc.has_interaction = 1)
+                      exists (select 1 from live_gift_record gr where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id and gr.biz_date = #{statDate} and gr.xu >= 1000)
+                      or exists (select 1 from live_chat_contact cc where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id and cc.biz_date = #{statDate})
                   )
             ) x
             group by x.streamer_id
@@ -323,14 +343,20 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectAdviceData" resultType="map">
         select s.streamer_id as streamerId,
                s.stage_name as stageName,
-               coalesce(monthly.xu, 0) as monthlyXu,
+               coalesce(reportMonthly.xu, 0) as monthlyXu,
                coalesce(monthly.customers, 0) as tipCustomers,
                coalesce(chat.customers, 0) as chatCustomers,
                coalesce(weiji.red, 0) as silentCount,
                coalesce(weiji.total, 0) as weijiTotal
         from live_streamer s
         left join (
-            select streamer_id, sum(xu) as xu, count(distinct customer_id) as customers
+            select streamer_id, sum(total_xu) as xu
+            from live_daily_report
+            where date_format(biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m')
+            group by streamer_id
+        ) reportMonthly on reportMonthly.streamer_id = s.streamer_id
+        left join (
+            select streamer_id, count(distinct customer_id) as customers
             from live_gift_record
             where date_format(biz_date, '%Y-%m') = date_format(curdate(), '%Y-%m')
             group by streamer_id
@@ -417,10 +443,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                    -- 绿色：月累计>1000 且该客户最后一天有打赏有互动
                    sum(case when x.month_total > 1000 and x.last_gift_has_chat = 1 then 1 else 0 end) as green,
                    -- 黄色：出现过黄色（无打赏有互动）
-                   sum(case when x.ever_yellow = 1 then 1 else 0 end) as yellow,
+                   sum(case when x.month_total <= 1000 and x.ever_yellow = 1 then 1 else 0 end) as yellow,
                    -- 橙色：出现过橙色（有建联无互动）
-                   sum(case when x.ever_orange = 1 then 1 else 0 end) as orange,
-                   count(*) as total
+                   sum(case when x.month_total = 0 and x.ever_yellow = 0 and x.ever_orange = 1 then 1 else 0 end) as orange,
+                   sum(case when x.month_total > 1000 or x.ever_yellow = 1 or x.ever_orange = 1 then 1 else 0 end) as total
             from (
                 select c.streamer_id, c.customer_id,
                     -- 月累计打赏
@@ -458,8 +484,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 from live_customer c
                 where c.merged_into_id is null
                   and (
-                      exists (select 1 from live_gift_record gr where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id and gr.xu >= 1000)
-                      or exists (select 1 from live_chat_contact cc where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id)
+                      exists (select 1 from live_gift_record gr where gr.customer_id = c.customer_id and gr.streamer_id = c.streamer_id and gr.biz_date between #{beginDate} and #{endDate} and gr.xu >= 1000)
+                      or exists (select 1 from live_chat_contact cc where cc.customer_id = c.customer_id and cc.streamer_id = c.streamer_id and cc.biz_date between #{beginDate} and #{endDate})
                   )
             ) x
             group by x.streamer_id
