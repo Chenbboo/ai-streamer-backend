@@ -399,7 +399,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by s.streamer_id
     </select>
 
-    <!-- 维系详情：周期内最后一天有打赏且无互动；月累计/天数用当月范围聚合 -->
+    <!-- 维系详情：周期内有打赏且最后一天打赏无互动；月累计用当月范围聚合 -->
     <select id="selectWeijiDetail" resultType="map">
         select c.customer_id as customerId,
                c.nickname,
@@ -420,9 +420,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
               select 1 from live_gift_record gr_d
               where gr_d.customer_id = c.customer_id and gr_d.streamer_id = c.streamer_id
                 and gr_d.biz_date between #{beginDate} and #{endDate}
-                and (select coalesce(sum(gr_m2.xu), 0) from live_gift_record gr_m2
-                     where gr_m2.customer_id = c.customer_id and gr_m2.streamer_id = c.streamer_id
-                     and date_format(gr_m2.biz_date, '%Y-%m') = date_format(#{beginDate}, '%Y-%m')) >= 1000
           )
           and not exists (
               select 1 from live_chat_contact cc
